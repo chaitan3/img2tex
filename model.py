@@ -1,12 +1,12 @@
 import torch
-from torch.nn.functional import tanh, softmax
+from torch.nn.functional import tanh, softmax, log_softmax
 
 conv_feature_size = 64
 rnn_decoder_hidden_size = 512
 rnn_encoder_hidden_size = 256
-tex_token_size = 80
-conv_context_rows = 12
-conv_context_size = conv_context_rows**2
+tex_token_size = 553
+tex_embedding_size = 80
+rnn_max_steps = 150
 
 device = torch.device('cuda:0')
 
@@ -43,64 +43,67 @@ class RNNEncoder(torch.nn.Module):
     def __init__(self):
         super(RNNEncoder, self).__init__()
         self.rnn = torch.nn.LSTM(conv_feature_size, 256, bidirectional=True)
-        self.num_rows = conv_context_rows
-        self.num_cols = conv_context_rows
         self.hidden_size = rnn_encoder_hidden_size
 
     def forward(self, conv_feats):
         #return conv_feats
         N = conv_feats.shape[0]
         outs = []
-        for i in range(0, self.num_rows):
+        num_rows, num_cols = conv_feats.shape[2:]
+        for i in range(0, num_rows):
             h0 = torch.randn(2, N, self.hidden_size, device=device)
             c0 = torch.randn(2, N, self.hidden_size, device=device)
             seq = conv_feats[:,:,i,:].permute(2, 0, 1)
-            out_seq = self.rnn(seq, (h0, c0))[0].reshape(self.num_cols, N, 2, -1).permute(1, 3, 2, 0).reshape(N, -1, 1, 2*self.num_cols)
+            out_seq = self.rnn(seq, (h0, c0))[0].reshape(num_cols, N, 2, -1).permute(1, 3, 2, 0).reshape(N, -1, 1, 2*self.num_cols)
             outs.append(out_seq)
         return torch.cat(outs, dim=2)
 
 class RNNDecoder(torch.nn.Module):
     def __init__(self):
         super(RNNDecoder, self).__init__()
-        self.context_size = conv_context_size
         #self.feature_size = conv_feature_size
         self.feature_size = 2*rnn_encoder_hidden_size
         self.hidden_size = rnn_decoder_hidden_size
+        self.embedding_size = tex_embedding_size
         self.token_size = tex_token_size
         self.out_size = self.hidden_size + self.feature_size
-        self.max_steps = 100
+        self.max_steps = rnn_max_steps
 
-        self.rnn = torch.nn.LSTM(self.token_size + self.out_size, self.hidden_size)
-        self.context_layer = torch.nn.Linear(self.out_size, self.out_size)
-        self.out_layer = torch.nn.Linear(self.out_size, self.token_size)
+        self.rnn = torch.nn.LSTM(self.embedding_size, self.hidden_size)
+        self.context_layer = torch.nn.Linear(self.out_size, self.embedding_size)
+        self.out_layer = torch.nn.Linear(self.embedding_size, self.token_size)
         self.score_matrix_layer = torch.nn.Linear(self.hidden_size + self.feature_size, self.hidden_size)
         self.score_vector_layer = torch.nn.Linear(self.hidden_size, 1)
         
     def forward(self, rnn_enc):
-        N = rnn_enc.shape[0]
+        N, rnn_enc_size = rnn_enc.shape[:2]
+        conv_size = rnn_enc.shape[2]*rnn_enc.shape[3]
         # define initial states
         token = torch.zeros(N, self.token_size, device=device)
         out = torch.zeros(N, self.out_size, device=device)
         hidden = torch.randn(1, N, self.hidden_size, device=device)
         cell = torch.randn(1, N, self.hidden_size, device=device)
-        rnn_enc = rnn_enc.reshape(N, -1, self.context_size).permute(0, 2, 1)
+        rnn_enc = rnn_enc.reshape(N, rnn_enc_size, -1).permute(0, 2, 1)
 
+        output = []
         for step in range(0, self.max_steps):
             # rnn step
-            inp = torch.cat((token, out), dim=1).reshape(1, N, -1)
+            #inp = torch.cat((token, out), dim=1).reshape(1, N, -1)
+            inp = torch.cat(out, dim=1).reshape(1, N, -1)
             _, (hidden, cell) = self.rnn(inp, (hidden, cell))
             
             # attention mechanism
-            hidden_cast = hidden.reshape(N, 1, -1).expand(N, self.context_size, -1)
+            hidden_cast = hidden.reshape(N, 1, -1).expand(N, conv_size, -1)
             score = self.score_vector_layer(tanh(self.score_matrix_layer(torch.cat((hidden_cast, rnn_enc), dim=2))))
             attention = softmax(score, dim=1).reshape(N, -1, 1)
             context = (attention*rnn_enc).sum(dim=1)
 
             # compute outputs
             out = tanh(self.context_layer(torch.cat((hidden.reshape(N, -1), context), dim=1)))
-            token = softmax(self.out_layer(out), dim=1)
+            token = log_softmax(self.out_layer(out), dim=1)
+            output.append(token.reshape(N, -1, 1))
             
-        return token
+        return torch.cat(output, dim=2)
 
 class Img2Tex(torch.nn.Module):
     def __init__(self):
