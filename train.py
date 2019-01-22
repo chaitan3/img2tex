@@ -22,6 +22,19 @@ def save_checkpoint(n_samples, data, model, optimizer):
         'data': data
         }, 'checkpoint_{}.pth'.format(n_samples))
 
+def validation_loss(model, criterion, data):
+    with torch.no_grad():
+        loss = 0.
+        n = 0.
+        for key, batch in data.items():
+            for i in range(0, len(batch[0]), N):
+                x = batch[0][i:i+N]
+                y = batch[1][i:i+N]
+                y_pred = model(x)
+                n += 1
+                loss += criterion(y_pred, y)
+        loss /= n
+    return loss
 
 def load_checkpoint():
     pass
@@ -62,22 +75,7 @@ def train():
                 n_samples += N
 
             save_checkpoint(n_samples, (epoch, key, i, loss), model, optimizer)
-
-            with torch.no_grad():
-                loss = 0.
-                n = 0.
-                for val_key, val_batch in val_data.items():
-                    for i in range(0, len(val_batch[0]), N):
-                        x = val_batch[0][i:i+N]
-                        y = val_batch[1][i:i+N]
-                        y_pred = model(x)
-                        n += 1
-                        loss += criterion(y_pred, y)
-                loss /= n
-                print('validation loss:', loss)
-                      
-                    
-
+            #print('validation loss:', validation_loss(model, criterion, val_data))
 
 if __name__ == '__main__':
     train()
