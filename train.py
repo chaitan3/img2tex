@@ -28,28 +28,31 @@ def validation_loss(model, criterion, data):
         n = 0.
         for key, batch in data.items():
             for i in range(0, len(batch[0]), N):
-                x = batch[0][i:i+N]
-                y = batch[1][i:i+N]
+                x = batch[0][i:i+N].cuda()
+                y = batch[1][i:i+N].cuda()
                 y_pred = model(x)
                 n += 1
                 loss += criterion(y_pred, y)
+                #print('val {} {}/{}, loss: {}'.format(key, i, len(batch[0]), loss.item()))
         loss /= n
     return loss
 
-def load_checkpoint(n_samples, model, optimizer):
+def load_checkpoint(n_samples, model, optimizer=None):
     checkpoint = torch.load('checkpoint_{}.pth'.format(n_samples))
     model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    if optimizer:
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     return checkpoint['data']
 
 def train():
     model = Model().cuda()
     criterion = torch.nn.NLLLoss().cuda()
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=1e-4)
+    torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda epoch: 0.5**(epoch+1))
 
     start_epoch, start_key, _, _ = load_checkpoint(8240, model, optimizer)
     #start_epoch, start_key = 0, None, 0
-    train_data, _ = load_images()
+    train_data, val_data = load_images(['train', 'validate'])
 
     data_keys = list(train_data.keys())
     if start_key:
@@ -58,10 +61,13 @@ def train():
         start_key = 0
 
     print('model parameter size (GB):', model_size(model)/1024**3)
+    print(validation_loss(model, criterion, val_data))
+    exit(1)
 
     n_samples = 0
     for epoch in range(start_epoch, n_epochs):
         print('starting epoch', epoch)
+        scheduler.step()
         for key, batch in train_data.items():
             if data_keys.index(key) < start_key:
                 continue

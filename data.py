@@ -8,22 +8,29 @@ import pickle
 from model import rnn_max_steps, tex_token_size, device
 data_dir = 'data/'
 
-def load_images():
+def load_vocab(rev=False):
     with open(data_dir + 'latex_vocab.txt') as f:
         vocab = [x.rstrip('\n') for x in f.readlines()]
         vocab.append(' ')
-        vocab = {x: i for i, x in enumerate(vocab)}
+        if not rev:
+            vocab = {x: i for i, x in enumerate(vocab)}
+    return vocab
+
+
+def load_images(sources):
+    vocab = load_vocab()
     with open(data_dir + 'formulas.norm.lst') as f:
         tokens = [x.rstrip('\n').split(' ') for x in f.readlines()]
-    data_pkl = data_dir + 'data.pkl'
-    if os.path.exists(data_pkl):
-        with open(data_pkl, 'rb') as f:
-            train_data, val_data = pickle.load(f)
-        print('loaded data')
-    else:
-        train_data = {}
-        val_data = {}
-        for data, data_file in [(val_data, 'validate_filter.lst'), (train_data, 'train_filter.lst')]:
+    data_list = []
+    for src in sources:
+        data_pkl = data_dir + src + '_data.pkl'
+        if os.path.exists(data_pkl):
+            with open(data_pkl, 'rb') as f:
+                data = pickle.load(f)
+        else:
+            data = {}
+
+            data_file = src + '_filter.lst'
             with open(data_dir + data_file) as f:
                 data_list = [x.rstrip('\n').split(' ') for x in f.readlines()]
             for f_img, idx in data_list:
@@ -67,11 +74,13 @@ def load_images():
                 formulas = np.array([np.pad(x[1], (0, max_tokens-len(x[1])), 'constant', constant_values=whitespace) for x in val])#.astype(np.int32)
                 
                 data[key] = (images, formulas)
+
         with open(data_pkl, 'wb') as f:
-            pickle.dump((train_data, val_data), f)
+            pickle.dump(data, f)
+        data_list.append(data)
 
     mem = 0
-    for data in [train_data, val_data]:
+    for data in data_list:
         for key in data.keys():
             x, y = data[key]
             #x = torch.tensor(x[:,None,:,:], device=device)
@@ -82,5 +91,5 @@ def load_images():
             data[key] = (x, y)
     print('data mem usage (GB):', mem/1024**3)
 
-    return train_data, val_data
+    return data_list
         
