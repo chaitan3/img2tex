@@ -51,8 +51,8 @@ class RNNEncoder(torch.nn.Module):
         outs = []
         num_rows, num_cols = conv_feats.shape[2:]
         for i in range(0, num_rows):
-            h0 = torch.randn(2, N, self.hidden_size, device=device)
-            c0 = torch.randn(2, N, self.hidden_size, device=device)
+            h0 = torch.zeros(2, N, self.hidden_size, device=device)
+            c0 = torch.zeros(2, N, self.hidden_size, device=device)
             seq = conv_feats[:,:,i,:].permute(2, 0, 1)
             out_seq = self.rnn(seq, (h0, c0))[0].reshape(num_cols, N, 1, 2*self.hidden_size).permute(1, 3, 2, 0)
             outs.append(out_seq)
@@ -80,8 +80,8 @@ class RNNDecoder(torch.nn.Module):
         conv_size = rnn_enc.shape[2]*rnn_enc.shape[3]
         rnn_enc = rnn_enc.reshape(N, rnn_enc_size, -1).permute(0, 2, 1)
         # define initial states
-        hidden = torch.randn(1, N, self.hidden_size, device=device)
-        cell = torch.randn(1, N, self.hidden_size, device=device)
+        hidden = torch.zeros(1, N, self.hidden_size, device=device)
+        cell = torch.zeros(1, N, self.hidden_size, device=device)
 
         output = []
         for step in range(0, self.max_steps):
