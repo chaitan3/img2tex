@@ -80,18 +80,11 @@ class RNNDecoder(torch.nn.Module):
         conv_size = rnn_enc.shape[2]*rnn_enc.shape[3]
         rnn_enc = rnn_enc.reshape(N, rnn_enc_size, -1).permute(0, 2, 1)
         # define initial states
-        #token = torch.zeros(N, self.token_size, device=device)
-        out = torch.zeros(N, self.embedding_size, device=device)
         hidden = torch.randn(1, N, self.hidden_size, device=device)
         cell = torch.randn(1, N, self.hidden_size, device=device)
 
         output = []
         for step in range(0, self.max_steps):
-            # rnn step
-            #inp = torch.cat((token, out), dim=1).reshape(1, N, -1)
-            inp = out.reshape(1, N, -1)
-            _, (hidden, cell) = self.rnn(inp, (hidden, cell))
-            
             # attention mechanism
             hidden_cast = hidden.reshape(N, 1, -1).expand(N, conv_size, -1)
             score = self.score_vector_layer(tanh(self.score_matrix_layer(torch.cat((hidden_cast, rnn_enc), dim=2))))
@@ -102,7 +95,13 @@ class RNNDecoder(torch.nn.Module):
             out = tanh(self.context_layer(torch.cat((hidden.reshape(N, -1), context), dim=1)))
             token = log_softmax(self.out_layer(out), dim=1)
             output.append(token.reshape(N, -1, 1))
+
+            # rnn step
+            #inp = torch.cat((token, out), dim=1).reshape(1, N, -1)
+            inp = out.reshape(1, N, -1)
+            _, (hidden, cell) = self.rnn(inp, (hidden, cell))
             
+                        
         return torch.cat(output, dim=2)
 
 class Img2Tex(torch.nn.Module):
