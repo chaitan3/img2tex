@@ -74,6 +74,8 @@ class RNNDecoder(torch.nn.Module):
         self.out_layer = torch.nn.Linear(self.embedding_size, self.token_size)
         self.score_matrix_layer = torch.nn.Linear(self.out_size, self.hidden_size)
         self.score_vector_layer = torch.nn.Linear(self.hidden_size, 1)
+
+        self.embedding_layer = torch.nn.Embedding(self.token_size, self.embedding_size)
         
     def forward(self, rnn_enc):
         N, rnn_enc_size = rnn_enc.shape[:2]
@@ -85,6 +87,14 @@ class RNNDecoder(torch.nn.Module):
 
         output = []
         for step in range(0, self.max_steps):
+            # embedding layer
+            #inp = out.reshape(1, N, -1)
+            inp = self.embedding_layer(output[-1]).reshape(1, N, -1)
+
+            # rnn step
+            #inp = torch.cat((token, out), dim=1).reshape(1, N, -1)
+            _, (hidden, cell) = self.rnn(inp, (hidden, cell))
+
             # attention mechanism
             hidden_cast = hidden.reshape(N, 1, -1).expand(N, conv_size, -1)
             score = self.score_vector_layer(tanh(self.score_matrix_layer(torch.cat((hidden_cast, rnn_enc), dim=2))))
@@ -95,12 +105,6 @@ class RNNDecoder(torch.nn.Module):
             out = tanh(self.context_layer(torch.cat((hidden.reshape(N, -1), context), dim=1)))
             token = log_softmax(self.out_layer(out), dim=1)
             output.append(token.reshape(N, -1, 1))
-
-            # rnn step
-            #inp = torch.cat((token, out), dim=1).reshape(1, N, -1)
-            inp = out.reshape(1, N, -1)
-            _, (hidden, cell) = self.rnn(inp, (hidden, cell))
-            
                         
         return torch.cat(output, dim=2)
 

@@ -11,7 +11,9 @@ data_dir = 'data/'
 def load_vocab(rev=False):
     with open(data_dir + 'latex_vocab.txt') as f:
         vocab = [x.rstrip('\n') for x in f.readlines()]
+        vocab.append('\SOS')
         vocab.append(' ')
+        vocab.append('\EOS')
         if not rev:
             vocab = {x: i for i, x in enumerate(vocab)}
     return vocab
@@ -56,7 +58,10 @@ def load_images(sources):
                 if len(formula) > rnn_max_steps:
                     continue
                 try:
-                    formula_idx = np.array([vocab[x] for x in formula])
+                    formula_idx = np.concat(
+                            [vocab[-3]],
+                            [vocab[x] for x in formula],
+                            [vocab[-1]])
                 except KeyError:
                     continue
                 key = img.shape
