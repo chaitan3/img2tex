@@ -4,7 +4,7 @@ from torch.nn.functional import tanh, softmax, log_softmax
 conv_feature_size = 64
 rnn_decoder_hidden_size = 512
 rnn_encoder_hidden_size = 256
-tex_token_size = 554
+tex_token_size = 556
 tex_embedding_size = 80
 rnn_max_steps = 150
 
@@ -85,7 +85,8 @@ class RNNDecoder(torch.nn.Module):
         hidden = torch.zeros(1, N, self.hidden_size, device=device)
         cell = torch.zeros(1, N, self.hidden_size, device=device)
 
-        output = []
+        output = [(self.token_size-3)*torch.ones(N, dtype=torch.Long, device=device)]
+
         for step in range(0, self.max_steps):
             # embedding layer
             #inp = out.reshape(1, N, -1)
@@ -104,7 +105,10 @@ class RNNDecoder(torch.nn.Module):
             # compute outputs
             out = tanh(self.context_layer(torch.cat((hidden.reshape(N, -1), context), dim=1)))
             token = log_softmax(self.out_layer(out), dim=1)
-            output.append(token.reshape(N, -1, 1))
+            if self.teacher_forcing:
+                output.append(inp)
+            else:
+                output.append(token.reshape(N, -1, 1))
                         
         return torch.cat(output, dim=2)
 
