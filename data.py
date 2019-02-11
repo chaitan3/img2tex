@@ -60,7 +60,8 @@ def load_images(sources):
                 try:
                     formula_idx = np.concat(
                             #[vocab[-3]],
-                            [vocab[x] for x in formula],
+                            #[vocab[x] for x in formula],
+                            filter(lambda y: y != vocab[-2], [vocab[x] for x in formula]),
                             [vocab[-1]])
                 except KeyError:
                     continue
