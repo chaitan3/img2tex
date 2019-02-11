@@ -7,6 +7,7 @@ rnn_encoder_hidden_size = 256
 tex_token_size = 556
 tex_embedding_size = 80
 rnn_max_steps = 150
+SOS_token = tex_token_size - 3 
 
 device = torch.device('cuda:0')
 
@@ -77,7 +78,7 @@ class RNNDecoder(torch.nn.Module):
 
         self.embedding_layer = torch.nn.Embedding(self.token_size, self.embedding_size)
         
-    def forward(self, rnn_enc):
+    def forward(self, rnn_enc, decoded_outputs=None):
         N, rnn_enc_size = rnn_enc.shape[:2]
         conv_size = rnn_enc.shape[2]*rnn_enc.shape[3]
         rnn_enc = rnn_enc.reshape(N, rnn_enc_size, -1).permute(0, 2, 1)
@@ -85,15 +86,14 @@ class RNNDecoder(torch.nn.Module):
         hidden = torch.zeros(1, N, self.hidden_size, device=device)
         cell = torch.zeros(1, N, self.hidden_size, device=device)
 
-        output = [(self.token_size-3)*torch.ones(N, dtype=torch.Long, device=device)]
+        token = SOS_token*torch.ones(N, dtype=torch.Long, device=device)
+        output = []
 
         for step in range(0, self.max_steps):
             # embedding layer
-            #inp = out.reshape(1, N, -1)
-            inp = self.embedding_layer(output[-1]).reshape(1, N, -1)
+            inp = self.embedding_layer(token).reshape(1, N, -1)
 
             # rnn step
-            #inp = torch.cat((token, out), dim=1).reshape(1, N, -1)
             _, (hidden, cell) = self.rnn(inp, (hidden, cell))
 
             # attention mechanism
@@ -104,11 +104,17 @@ class RNNDecoder(torch.nn.Module):
 
             # compute outputs
             out = tanh(self.context_layer(torch.cat((hidden.reshape(N, -1), context), dim=1)))
-            token = log_softmax(self.out_layer(out), dim=1)
-            if self.teacher_forcing:
-                output.append(inp)
+            out = log_softmax(self.out_layer(out), dim=1)
+            output.append(out)
+            if decoded_outputs:
+                token = decoded_outputs[:, step]
+                if step == decoded_outputs.shape[1]-1:
+                    break
             else:
-                output.append(token.reshape(N, -1, 1))
+                # assert batch size 1
+                token = out.topk(1)[1].squeeze().detach()
+                if token == EOS_token:
+                    break
                         
         return torch.cat(output, dim=2)
 
@@ -119,8 +125,8 @@ class Img2Tex(torch.nn.Module):
         self.rnn_encoder = RNNEncoder()
         self.rnn_decoder = RNNDecoder()
 
-    def forward(self, x):
+    def forward(self, x, y=None):
         cnn_enc = self.cnn_encoder(x)
         rnn_enc = self.rnn_encoder(cnn_enc)
-        y_pred = self.rnn_decoder(rnn_enc)
+        y_pred = self.rnn_decoder(rnn_enc, y)
         return y_pred

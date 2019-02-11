@@ -81,7 +81,7 @@ def train():
                 #y = batch[1][i:i+N]
                 x = batch[0][i:i+N].cuda()
                 y = batch[1][i:i+N].cuda()
-                y_pred = model(x)
+                y_pred = model(x, y)
 
                 optimizer.zero_grad()
                 loss = criterion(y_pred, y)
