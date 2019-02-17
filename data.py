@@ -28,15 +28,15 @@ def load_images(sources):
         data_pkl = data_dir + src + '_data.pkl'
         if os.path.exists(data_pkl):
             with open(data_pkl, 'rb') as f:
-                data = pickle.load(f)
+                data_dict = pickle.load(f)
         else:
-            data = {}
+            data_dict = {}
 
             data_file = src + '_filter.lst'
             with open(data_dir + data_file) as f:
-                data_list = [x.rstrip('\n').split(' ') for x in f.readlines()]
-            for f_img, idx in data_list:
-                print(data_file, idx, f_img)
+                data_from_file = [x.rstrip('\n').split(' ') for x in f.readlines()]
+            #for f_img, idx in data_from_file:
+            for f_img, idx in data_from_file[:1000]:
                 img = scipy.misc.imread(data_dir + 'images_processed/' + f_img, mode='L')
                 # convert to floating point in range [-1, 1]
                 img = (img-127.5)/127.5
@@ -58,20 +58,18 @@ def load_images(sources):
                 if len(formula) > rnn_max_steps:
                     continue
                 try:
-                    formula_idx = np.concat(
-                            #[vocab[-3]],
-                            #[vocab[x] for x in formula],
-                            filter(lambda y: y != vocab[-2], [vocab[x] for x in formula]),
-                            [vocab[-1]])
+                    formula_idx = list(filter(lambda y: y != vocab[' '], [vocab[x] for x in formula]))
                 except KeyError:
                     continue
+                assert len(formula_idx) > 0
+                formula_idx = np.concatenate((formula_idx, [vocab['\EOS']]))
                 key = img.shape
-                if key not in data.keys():
-                    data[key] = []
-                data[key].append((img, formula_idx))
+                if key not in data_dict.keys():
+                    data_dict[key] = []
+                data_dict[key].append((img, formula_idx))
 
-            for key in data.keys():
-                val = data[key]
+            for key in data_dict.keys():
+                val = data_dict[key]
                 images = np.array([x[0] for x in val]).astype(np.float32)
                 # hack till input feeding is implemented
                 #max_tokens = max([len(x[1]) for x in val])
@@ -79,22 +77,22 @@ def load_images(sources):
                 whitespace = vocab[' ']
                 formulas = np.array([np.pad(x[1], (0, max_tokens-len(x[1])), 'constant', constant_values=whitespace) for x in val])#.astype(np.int32)
                 
-                data[key] = (images, formulas)
+                data_dict[key] = (images, formulas)
 
         with open(data_pkl, 'wb') as f:
-            pickle.dump(data, f)
-        data_list.append(data)
+            pickle.dump(data_dict, f)
+        data_list.append(data_dict)
 
     mem = 0
-    for data in data_list:
-        for key in data.keys():
-            x, y = data[key]
+    for data_dict in data_list:
+        for key in data_dict.keys():
+            x, y = data_dict[key]
             #x = torch.tensor(x[:,None,:,:], device=device)
             #y = torch.tensor(y, device=device)
             x = torch.tensor(x[:,None,:,:])
             y = torch.tensor(y)
             mem += (np.prod(x.shape) + np.prod(y.shape))*4
-            data[key] = (x, y)
+            data_dict[key] = (x, y)
     print('data mem usage (GB):', mem/1024**3)
 
     return data_list

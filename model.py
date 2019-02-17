@@ -8,6 +8,7 @@ tex_token_size = 556
 tex_embedding_size = 80
 rnn_max_steps = 150
 SOS_token = tex_token_size - 3 
+SOS_token = tex_token_size - 1
 
 device = torch.device('cuda:0')
 
@@ -86,7 +87,7 @@ class RNNDecoder(torch.nn.Module):
         hidden = torch.zeros(1, N, self.hidden_size, device=device)
         cell = torch.zeros(1, N, self.hidden_size, device=device)
 
-        token = SOS_token*torch.ones(N, dtype=torch.Long, device=device)
+        token = SOS_token*torch.ones(N, dtype=torch.long, device=device)
         output = []
 
         for step in range(0, self.max_steps):
@@ -106,7 +107,7 @@ class RNNDecoder(torch.nn.Module):
             out = tanh(self.context_layer(torch.cat((hidden.reshape(N, -1), context), dim=1)))
             out = log_softmax(self.out_layer(out), dim=1)
             output.append(out)
-            if decoded_outputs:
+            if decoded_outputs is not None:
                 token = decoded_outputs[:, step]
                 if step == decoded_outputs.shape[1]-1:
                     break

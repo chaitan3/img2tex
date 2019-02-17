@@ -48,10 +48,10 @@ def train():
     model = Model().cuda()
     criterion = torch.nn.NLLLoss().cuda()
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=1e-4)
-    torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda epoch: 0.5**(epoch+1))
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda epoch: 0.5**(epoch+1))
 
-    start_epoch, start_key, _, _ = load_checkpoint(8240, model, optimizer)
-    #start_epoch, start_key = 0, None, 0
+    #start_epoch, start_key, _, _ = load_checkpoint(8240, model, optimizer)
+    start_epoch, start_key = 0, None
     train_data, val_data = load_images(['train', 'validate'])
 
     data_keys = list(train_data.keys())
@@ -61,8 +61,9 @@ def train():
         start_key = 0
 
     print('model parameter size (GB):', model_size(model)/1024**3)
-    print(validation_loss(model, criterion, val_data))
-    exit(1)
+    #print(validation_loss(model, criterion, val_data))
+    #exit(1)
+    #import pdb;pdb.set_trace()
 
     n_samples = 0
     for epoch in range(start_epoch, n_epochs):
