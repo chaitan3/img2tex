@@ -5,9 +5,10 @@ import time
 
 from model import Img2Tex as Model
 from model import device
-from data import load_images
+from data import load_images, get_prediction
 
-N = 4
+#N = 4
+N = 1
 n_epochs = 20
 learning_rate= 0.1
 
@@ -24,18 +25,24 @@ def save_checkpoint(n_samples, data, model, optimizer):
 
 def validation_loss(model, criterion, data):
     with torch.no_grad():
-        loss = 0.
+        teacher_loss = 0.
+        vanilla_loss = 0.
         n = 0.
         for key, batch in data.items():
             for i in range(0, len(batch[0]), N):
                 x = batch[0][i:i+N].cuda()
-                y = batch[1][i:i+N].cuda()
-                y_pred = model(x)
+                y = batch[1][i:i+N][0].cuda()
                 n += 1
-                loss += criterion(y_pred, y)
-                #print('val {} {}/{}, loss: {}'.format(key, i, len(batch[0]), loss.item()))
+                y_pred = model(x, y)
+                real = get_prediction(y[0])
+                gen = get_prediction(y_pred[0].argmax(dim=0))
+                print(real)
+                print(gen)
+                teacher_loss += criterion(y_pred, y)
+                #vanilla_loss += criterion(model(x), y)
+                print('val {} {}/{}, losses: {}, {}'.format(key, i, len(batch[0]), teacher_loss.item()/n, vanilla_loss/n))
         loss /= n
-    return loss
+    return vanilla_loss
 
 def load_checkpoint(n_samples, model, optimizer=None):
     checkpoint = torch.load('checkpoint_{}.pth'.format(n_samples))
@@ -50,8 +57,8 @@ def train():
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda epoch: 0.5**(epoch+1))
 
-    #start_epoch, start_key, _, _ = load_checkpoint(8240, model, optimizer)
-    start_epoch, start_key = 0, None
+    start_epoch, start_key, _, _ = load_checkpoint('latest', model, optimizer)
+    #start_epoch, start_key = 0, None
     train_data, val_data = load_images(['train', 'validate'])
 
     data_keys = list(train_data.keys())
@@ -81,7 +88,7 @@ def train():
                 #x = batch[0][i:i+N]
                 #y = batch[1][i:i+N]
                 x = batch[0][i:i+N].cuda()
-                y = batch[1][i:i+N].cuda()
+                y = batch[1][i:i+N][0].cuda()
                 y_pred = model(x, y)
 
                 optimizer.zero_grad()
@@ -95,8 +102,8 @@ def train():
                 print('time step:', end-start)
                 n_samples += N
 
-            save_checkpoint(n_samples, (epoch, key, i, loss), model, optimizer)
-            #print('validation loss:', validation_loss(model, criterion, val_data))
+        save_checkpoint(n_samples, (epoch, key, i, loss), model, optimizer)
+        #print('validation loss:', validation_loss(model, criterion, val_data))
 
 if __name__ == '__main__':
     train()

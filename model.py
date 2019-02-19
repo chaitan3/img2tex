@@ -8,7 +8,7 @@ tex_token_size = 556
 tex_embedding_size = 80
 rnn_max_steps = 150
 SOS_token = tex_token_size - 3 
-SOS_token = tex_token_size - 1
+EOS_token = tex_token_size - 1
 
 device = torch.device('cuda:0')
 
@@ -106,13 +106,14 @@ class RNNDecoder(torch.nn.Module):
             # compute outputs
             out = tanh(self.context_layer(torch.cat((hidden.reshape(N, -1), context), dim=1)))
             out = log_softmax(self.out_layer(out), dim=1)
-            output.append(out)
+            output.append(out.reshape(N, -1, 1))
             if decoded_outputs is not None:
                 token = decoded_outputs[:, step]
-                if step == decoded_outputs.shape[1]-1:
+                if step + 1 == decoded_outputs.shape[1]:
+                    assert len(output) == decoded_outputs.shape[1]
                     break
             else:
-                # assert batch size 1
+                assert N == 1
                 token = out.topk(1)[1].squeeze().detach()
                 if token == EOS_token:
                     break

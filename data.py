@@ -18,6 +18,10 @@ def load_vocab(rev=False):
             vocab = {x: i for i, x in enumerate(vocab)}
     return vocab
 
+def get_prediction(y):
+    if not hasattr(get_prediction, 'rev_vocab'):
+        get_prediction.rev_vocab = load_vocab(rev=True)
+    return ' '.join([get_prediction.rev_vocab[i] for i in y])
 
 def load_images(sources):
     vocab = load_vocab()
@@ -35,8 +39,8 @@ def load_images(sources):
             data_file = src + '_filter.lst'
             with open(data_dir + data_file) as f:
                 data_from_file = [x.rstrip('\n').split(' ') for x in f.readlines()]
-            #for f_img, idx in data_from_file:
-            for f_img, idx in data_from_file[:1000]:
+            for f_img, idx in data_from_file:
+            #for f_img, idx in data_from_file[:1000]:
                 img = scipy.misc.imread(data_dir + 'images_processed/' + f_img, mode='L')
                 # convert to floating point in range [-1, 1]
                 img = (img-127.5)/127.5
@@ -55,7 +59,7 @@ def load_images(sources):
                 #assert img.shape == (refh, refw)
 
                 formula = tokens[int(idx)]
-                if len(formula) > rnn_max_steps:
+                if len(formula) > rnn_max_steps - 1:
                     continue
                 try:
                     formula_idx = list(filter(lambda y: y != vocab[' '], [vocab[x] for x in formula]))
@@ -71,11 +75,8 @@ def load_images(sources):
             for key in data_dict.keys():
                 val = data_dict[key]
                 images = np.array([x[0] for x in val]).astype(np.float32)
-                # hack till input feeding is implemented
-                #max_tokens = max([len(x[1]) for x in val])
-                max_tokens = rnn_max_steps
-                whitespace = vocab[' ']
-                formulas = np.array([np.pad(x[1], (0, max_tokens-len(x[1])), 'constant', constant_values=whitespace) for x in val])#.astype(np.int32)
+                formulas = [x[1] for x in val]
+                #formulas = np.array([np.pad(x[1], (0, max_tokens-len(x[1])), 'constant', constant_values=whitespace) for x in val])#.astype(np.int32)
                 
                 data_dict[key] = (images, formulas)
 
@@ -87,11 +88,12 @@ def load_images(sources):
     for data_dict in data_list:
         for key in data_dict.keys():
             x, y = data_dict[key]
-            #x = torch.tensor(x[:,None,:,:], device=device)
+            x = torch.tensor(x[:,None,:,:], device=device)
             #y = torch.tensor(y, device=device)
-            x = torch.tensor(x[:,None,:,:])
-            y = torch.tensor(y)
-            mem += (np.prod(x.shape) + np.prod(y.shape))*4
+            y = [torch.tensor(tmp, device=device).reshape(1, -1) for tmp in y]
+            #x = torch.tensor(x[:,None,:,:])
+            #y = torch.tensor(y)
+            #mem += (np.prod(x.shape) + np.prod(y.shape))*4
             data_dict[key] = (x, y)
     print('data mem usage (GB):', mem/1024**3)
 
