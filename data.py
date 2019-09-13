@@ -6,7 +6,8 @@ import os
 import pickle
 
 from model import rnn_max_steps, tex_token_size, device
-data_dir = 'data/'
+data_dir = '/home/talnikar/projects/scratch/img2tex/data/'
+#data_dir = '/home/talnikar/projects/im2markup/data/sample_bak/'
 
 def load_vocab(rev=False):
     with open(data_dir + 'latex_vocab.txt') as f:

@@ -2,8 +2,9 @@ import torch
 from torch.nn.functional import tanh, softmax, log_softmax
 
 conv_feature_size = 64
+#rnn_encoder_hidden_size = 256
+rnn_encoder_hidden_size = 32
 rnn_decoder_hidden_size = 512
-rnn_encoder_hidden_size = 256
 tex_token_size = 556
 tex_embedding_size = 80
 rnn_max_steps = 150
@@ -11,6 +12,10 @@ SOS_token = tex_token_size - 3
 EOS_token = tex_token_size - 1
 
 device = torch.device('cuda:0')
+
+def tinfo(a):
+    a = torch.abs(a)
+    return (a.min().item(), a.max().item())
 
 class ConvolutionalEncoder(torch.nn.Module):
     def __init__(self):
@@ -63,21 +68,23 @@ class RNNEncoder(torch.nn.Module):
 class RNNDecoder(torch.nn.Module):
     def __init__(self):
         super(RNNDecoder, self).__init__()
-        #self.feature_size = conv_feature_size
-        self.feature_size = 2*rnn_encoder_hidden_size
         self.hidden_size = rnn_decoder_hidden_size
         self.embedding_size = tex_embedding_size
+        self.context_size = 2*rnn_encoder_hidden_size
         self.token_size = tex_token_size
-        self.out_size = self.hidden_size + self.feature_size
+        self.score_size = self.hidden_size 
+        self.out_size = self.hidden_size 
         self.max_steps = rnn_max_steps
 
-        self.rnn = torch.nn.LSTM(self.embedding_size, self.hidden_size)
-        self.context_layer = torch.nn.Linear(self.out_size, self.embedding_size)
-        self.out_layer = torch.nn.Linear(self.embedding_size, self.token_size)
-        self.score_matrix_layer = torch.nn.Linear(self.out_size, self.hidden_size)
-        self.score_vector_layer = torch.nn.Linear(self.hidden_size, 1)
-
         self.embedding_layer = torch.nn.Embedding(self.token_size, self.embedding_size)
+        #self.rnn = torch.nn.LSTM(self.embedding_size + self.out_size, self.hidden_size)
+        self.rnn = torch.nn.GRU(self.embedding_size + self.out_size, self.hidden_size)
+        self.score_matrix_layer1 = torch.nn.Linear(self.hidden_size, self.score_size, bias=False)
+        self.score_matrix_layer2 = torch.nn.Linear(self.context_size, self.score_size, bias=False)
+        self.score_vector_layer = torch.nn.Linear(self.score_size, 1, bias=False)
+        self.context_layer = torch.nn.Linear(self.hidden_size + self.context_size, self.out_size, bias=False)
+        self.out_layer = torch.nn.Linear(self.out_size, self.token_size, bias=False)
+
         
     def forward(self, rnn_enc, decoded_outputs=None):
         N, rnn_enc_size = rnn_enc.shape[:2]
@@ -86,49 +93,63 @@ class RNNDecoder(torch.nn.Module):
         # define initial states
         hidden = torch.zeros(1, N, self.hidden_size, device=device)
         cell = torch.zeros(1, N, self.hidden_size, device=device)
+        out = torch.zeros(N, self.out_size, device=device)
 
         token = SOS_token*torch.ones(N, dtype=torch.long, device=device)
-        output = []
+        p_tokens = []
+        print(rnn_enc.shape, decoded_outputs.shape)
 
         for step in range(0, self.max_steps):
+            
             # embedding layer
             inp = self.embedding_layer(token).reshape(1, N, -1)
+            inp = torch.cat((inp, out.reshape(1, N, -1)), dim=2)
+            #print('inp', tinfo(inp))
 
             # rnn step
-            _, (hidden, cell) = self.rnn(inp, (hidden, cell))
+            #_, (hidden, cell) = self.rnn(inp, (hidden, cell))
+            _, hidden = self.rnn(inp, hidden)
+            #print('hidden', tinfo(hidden))
 
-            # attention mechanism
-            hidden_cast = hidden.reshape(N, 1, -1).expand(N, conv_size, -1)
-            score = self.score_vector_layer(tanh(self.score_matrix_layer(torch.cat((hidden_cast, rnn_enc), dim=2))))
-            attention = softmax(score, dim=1).reshape(N, -1, 1)
+            # attention mechanism from previous step
+            hidden_cast = hidden.permute(1, 0, 2)
+            score = self.score_vector_layer(tanh(self.score_matrix_layer1(hidden_cast) + self.score_matrix_layer2(rnn_enc)))
+            attention = softmax(score, dim=1)
             context = (attention*rnn_enc).sum(dim=1)
+            #print('context', tinfo(context))
 
             # compute outputs
-            out = tanh(self.context_layer(torch.cat((hidden.reshape(N, -1), context), dim=1)))
-            out = log_softmax(self.out_layer(out), dim=1)
-            output.append(out.reshape(N, -1, 1))
+            hidden_cast = hidden_cast.reshape(N, -1)
+            out = tanh(self.context_layer(torch.cat((hidden_cast, context), dim=1)))
+            p_token = softmax(self.out_layer(out), dim=1)
+
+            p_tokens.append(p_token.reshape(N, -1, 1))
+            print('p_tokens', tinfo(p_token))
+            #import pdb;pdb.set_trace()
+
             if decoded_outputs is not None:
                 token = decoded_outputs[:, step]
                 if step + 1 == decoded_outputs.shape[1]:
-                    assert len(output) == decoded_outputs.shape[1]
                     break
             else:
                 assert N == 1
-                token = out.topk(1)[1].squeeze().detach()
+                token = p_token.topk(1)[1].squeeze().detach()
                 if token == EOS_token:
                     break
                         
-        return torch.cat(output, dim=2)
+        #exit(1)
+        return torch.cat(p_tokens, dim=2)
 
 class Img2Tex(torch.nn.Module):
     def __init__(self):
         super(Img2Tex, self).__init__()
         self.cnn_encoder = ConvolutionalEncoder()
-        self.rnn_encoder = RNNEncoder()
+        #self.rnn_encoder = RNNEncoder()
         self.rnn_decoder = RNNDecoder()
 
     def forward(self, x, y=None):
         cnn_enc = self.cnn_encoder(x)
-        rnn_enc = self.rnn_encoder(cnn_enc)
+        #rnn_enc = self.rnn_encoder(cnn_enc)
+        rnn_enc = cnn_enc
         y_pred = self.rnn_decoder(rnn_enc, y)
         return y_pred

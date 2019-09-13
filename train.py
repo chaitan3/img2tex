@@ -53,12 +53,13 @@ def load_checkpoint(n_samples, model, optimizer=None):
 
 def train():
     model = Model().cuda()
-    criterion = torch.nn.NLLLoss().cuda()
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=1e-4)
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda epoch: 0.5**(epoch+1))
+    criterion = torch.nn.CrossEntropyLoss().cuda()
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+    #optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=1e-4)
+    #scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda epoch: 0.1**(epoch+1))
 
-    start_epoch, start_key, _, _ = load_checkpoint('latest', model, optimizer)
-    #start_epoch, start_key = 0, None
+    #start_epoch, start_key, _, _ = load_checkpoint('latest', model, optimizer)
+    start_epoch, start_key = 0, None
     train_data, val_data = load_images(['train', 'validate'])
 
     data_keys = list(train_data.keys())
@@ -75,7 +76,7 @@ def train():
     n_samples = 0
     for epoch in range(start_epoch, n_epochs):
         print('starting epoch', epoch)
-        scheduler.step()
+        #scheduler.step()
         for key, batch in train_data.items():
             if data_keys.index(key) < start_key:
                 continue
@@ -84,6 +85,7 @@ def train():
             #continue
             for i in range(0, batch_size, N):
                 start = time.time()
+                optimizer.zero_grad()
 
                 #x = batch[0][i:i+N]
                 #y = batch[1][i:i+N]
@@ -91,7 +93,6 @@ def train():
                 y = batch[1][i:i+N][0].cuda()
                 y_pred = model(x, y)
 
-                optimizer.zero_grad()
                 loss = criterion(y_pred, y)
                 loss.backward()
 
