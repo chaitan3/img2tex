@@ -85,18 +85,25 @@ def train():
             #continue
             for i in range(0, batch_size, N):
                 start = time.time()
-                optimizer.zero_grad()
-
-                #x = batch[0][i:i+N]
-                #y = batch[1][i:i+N]
                 x = batch[0][i:i+N].cuda()
                 y = batch[1][i:i+N][0].cuda()
-                y_pred = model(x, y)
+                #x = batch[0][i:i+N]
+                #y = batch[1][i:i+N]
 
+                optimizer.zero_grad()
+                y_pred = model(x, y)
                 loss = criterion(y_pred, y)
                 loss.backward()
-
                 optimizer.step()
+                
+                total_norm = 0.
+                for p in model.parameters():
+                    param_norm = p.grad.data.norm(2)
+                    total_norm += param_norm.item() ** 2
+                    print('grad_norm', param_norm)
+                total_norm = total_norm ** (1. / 2)
+                print('total_norm', total_norm)
+
                 end = time.time()
 
                 print('epoch: {} {} {}/{}, loss: {}'.format(epoch, key, i, batch_size, loss.item()))

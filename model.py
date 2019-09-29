@@ -92,7 +92,7 @@ class RNNDecoder(torch.nn.Module):
         rnn_enc = rnn_enc.reshape(N, rnn_enc_size, -1).permute(0, 2, 1)
         # define initial states
         hidden = torch.zeros(1, N, self.hidden_size, device=device)
-        cell = torch.zeros(1, N, self.hidden_size, device=device)
+        #cell = torch.zeros(1, N, self.hidden_size, device=device)
         out = torch.zeros(N, self.out_size, device=device)
 
         token = SOS_token*torch.ones(N, dtype=torch.long, device=device)
@@ -124,7 +124,8 @@ class RNNDecoder(torch.nn.Module):
             p_token = softmax(self.out_layer(out), dim=1)
 
             p_tokens.append(p_token.reshape(N, -1, 1))
-            print('p_tokens', tinfo(p_token))
+            if step < 2:
+                print('p_tokens', tinfo(p_token))
             #import pdb;pdb.set_trace()
 
             if decoded_outputs is not None:
